@@ -2846,10 +2846,6 @@ void Assign_Houses(void)
         housep = HouseClass::As_Pointer(house);
         memset((char*)housep->IniName, 0, MPLAYER_NAME_MAX);
         strncpy((char*)housep->IniName, Session.Players[index]->Name, MPLAYER_NAME_MAX - 1);
-#ifdef WOLAPI_INTEGRATION
-        //	Make another copy of name, permanent throughout entire game.
-        strncpy((char*)housep->InitialName, Session.Players[index]->Name, MPLAYER_NAME_MAX - 1);
-#endif
         housep->IsHuman = true;
         housep->Init_Data((PlayerColorType)(Session.Players[index]->Player.Color),
                           Session.Players[index]->Player.House,

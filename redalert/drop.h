@@ -75,9 +75,7 @@ public:
         return (List.Get_Item(index));
     };
 
-#ifdef WOLAPI_INTEGRATION
     virtual void Flag_To_Redraw(void);
-#endif
 
     void Expand(void);
     void Collapse(void);

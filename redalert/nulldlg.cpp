@@ -4217,14 +4217,9 @@ oh_dear_its_a_label:
 
             SendPacket.ScenarioInfo.FileLength = file.Size();
 
-#ifdef WOLAPI_INTEGRATION
-            strcpy(SendPacket.ScenarioInfo.ShortFileName,
-                   Session.Scenarios[Session.Options.ScenarioIndex]->Get_Filename());
-#else
             strncpy(SendPacket.ScenarioInfo.ShortFileName,
                     Session.Scenarios[Session.Options.ScenarioIndex]->Get_Filename(),
                     sizeof(SendPacket.ScenarioInfo.ShortFileName));
-#endif
             strncpy((char*)SendPacket.ScenarioInfo.FileDigest,
                     Session.Scenarios[Session.Options.ScenarioIndex]->Get_Digest(),
                     sizeof SendPacket.ScenarioInfo.FileDigest);
@@ -6006,13 +6001,7 @@ int Com_Show_Scenario_Dialog(void)
                     ...............................................................*/
                     strcpy(Session.Options.ScenarioDescription, ReceivePacket.ScenarioInfo.Scenario);
                     strcpy(Session.ScenarioFileName, ReceivePacket.ScenarioInfo.ShortFileName);
-#ifdef WOLAPI_INTEGRATION
-                    strncpy(Session.ScenarioDigest,
-                            (char*)ReceivePacket.ScenarioInfo.FileDigest,
-                            sizeof(ReceivePacket.ScenarioInfo.FileDigest));
-#else
                     strcpy(Session.ScenarioDigest, (char*)ReceivePacket.ScenarioInfo.FileDigest);
-#endif
                     Session.ScenarioIsOfficial = ReceivePacket.ScenarioInfo.OfficialScenario;
                     Session.ScenarioFileLength = ReceivePacket.ScenarioInfo.FileLength;
 

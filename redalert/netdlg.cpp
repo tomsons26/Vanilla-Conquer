@@ -156,11 +156,6 @@ bool bSpecialAftermathScenario(const char* szScenarioDescription);
 #ifdef FIXIT_VERSION_3
 bool Force_Scenario_Available(const char* szName);
 #endif
-#ifdef WOLAPI_INTEGRATION
-#include "WolStrng.h"
-#include "WolapiOb.h"
-extern WolapiObject* pWolapi;
-#endif
 
 #include "COORDA.h"
 
@@ -4311,13 +4306,7 @@ static JoinEventType Get_Join_Responses(JoinStateType* joinstate,
             ...............................................................*/
             strcpy(Session.Options.ScenarioDescription, Session.GPacket.ScenarioInfo.Scenario);
             strcpy(Session.ScenarioFileName, Session.GPacket.ScenarioInfo.ShortFileName);
-#ifdef WOLAPI_INTEGRATION
-            strncpy(Session.ScenarioDigest,
-                    (char*)Session.GPacket.ScenarioInfo.FileDigest,
-                    sizeof(Session.GPacket.ScenarioInfo.FileDigest));
-#else
             strcpy(Session.ScenarioDigest, (char*)Session.GPacket.ScenarioInfo.FileDigest);
-#endif
             Session.ScenarioIsOfficial = Session.GPacket.ScenarioInfo.OfficialScenario;
             Session.ScenarioFileLength = Session.GPacket.ScenarioInfo.FileLength;
 
@@ -5577,14 +5566,9 @@ static int Net_New_Dialog(void)
                        Session.Scenarios[Session.Options.ScenarioIndex]->Description());
                 CCFileClass file(Session.Scenarios[Session.Options.ScenarioIndex]->Get_Filename());
                 Session.GPacket.ScenarioInfo.FileLength = file.Size();
-#ifdef WOLAPI_INTEGRATION
-                strcpy(Session.GPacket.ScenarioInfo.ShortFileName,
-                       Session.Scenarios[Session.Options.ScenarioIndex]->Get_Filename());
-#else
                 strncpy(Session.GPacket.ScenarioInfo.ShortFileName,
                         Session.Scenarios[Session.Options.ScenarioIndex]->Get_Filename(),
                         sizeof(Session.GPacket.ScenarioInfo.ShortFileName));
-#endif
                 strncpy((char*)Session.GPacket.ScenarioInfo.FileDigest,
                         Session.Scenarios[Session.Options.ScenarioIndex]->Get_Digest(),
                         sizeof(Session.GPacket.ScenarioInfo.FileDigest));
@@ -7947,8 +7931,6 @@ void Log_Message(char* msg)
 } /* end of Log_Message */
 #endif
 
-#ifndef WOLAPI_INTEGRATION //	Rest of file ifdeffed out.
-
 extern bool Spawn_WChat(bool can_launch);
 
 /***********************************************************************************************
@@ -8481,14 +8463,9 @@ static int Net_Fake_New_Dialog(void)
                 }
 
                 Session.GPacket.ScenarioInfo.FileLength = file.Size();
-#ifdef WOLAPI_INTEGRATION
-                strcpy(Session.GPacket.ScenarioInfo.ShortFileName,
-                       Session.Scenarios[Session.Options.ScenarioIndex]->Get_Filename());
-#else
                 strncpy(Session.GPacket.ScenarioInfo.ShortFileName,
                         Session.Scenarios[Session.Options.ScenarioIndex]->Get_Filename(),
                         sizeof(Session.GPacket.ScenarioInfo.ShortFileName));
-#endif
                 strncpy((char*)Session.GPacket.ScenarioInfo.FileDigest,
                         Session.Scenarios[Session.Options.ScenarioIndex]->Get_Digest(),
                         sizeof(Session.GPacket.ScenarioInfo.FileDigest));
@@ -9679,5 +9656,4 @@ bool Client_Remote_Connect(void)
 
 /*************************** end of netdlg.cpp *****************************/
 
-#endif //#ifndef WOLAPI_INTEGRATION
 #endif

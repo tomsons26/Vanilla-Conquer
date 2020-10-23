@@ -319,11 +319,7 @@ typedef struct
             unsigned int GameSpeed;            // Game Speed
             unsigned long ResponseTime;        // packet response time
             unsigned int FileLength;           // Length of scenario file to expect from host.
-#ifdef WOLAPI_INTEGRATION
-            char ShortFileName[13]; // Name of scenario file to expect from host
-#else
             char ShortFileName[12]; // Name of scenario file to expect from host
-#endif
             unsigned char FileDigest[32]; // Digest of scenario file to expect from host
                                           //	ajw - This is not necessarily null-terminated.
         } ScenarioInfo;
@@ -390,11 +386,7 @@ typedef struct GlobalPacketType
             unsigned int GameSpeed;            // Game Speed
             unsigned long Version;             // version # common to all players
             unsigned int FileLength;           // Length of scenario file to expect from host.
-#ifdef WOLAPI_INTEGRATION
-            char ShortFileName[13]; // Name of scenario file to expect from host
-#else
             char ShortFileName[12]; // Name of scenario file to expect from host
-#endif
             unsigned char FileDigest[32]; // Digest of scenario file to expect from host
                                           //	ajw - This is not necessarily null-terminated.
         } ScenarioInfo;

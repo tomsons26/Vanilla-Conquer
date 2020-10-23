@@ -11,7 +11,6 @@ set(REDALERT_SRC
     bbdata.cpp
     bdata.cpp
     bench.cpp
-    bigcheck.cpp
     building.cpp
     bullet.cpp
     cargo.cpp
@@ -71,7 +70,6 @@ set(REDALERT_SRC
     help.cpp
     house.cpp
     hsv.cpp
-    iconlist.cpp
     iconset.cpp
     idata.cpp
     infantry.cpp
@@ -128,7 +126,6 @@ set(REDALERT_SRC
     radio.cpp
     ramfile.cpp
     rand.cpp
-    rawolapi.cpp
     reinf.cpp
     rgb.cpp
     rotbmp.cpp
@@ -138,7 +135,6 @@ set(REDALERT_SRC
     score.cpp
     scroll.cpp
     sdata.cpp
-    seditdlg.cpp
     sendfile.cpp
     seqconn.cpp
     session.cpp
@@ -170,7 +166,6 @@ set(REDALERT_SRC
     tevent.cpp
     textbtn.cpp
     theme.cpp
-    tooltip.cpp
     tracker.cpp
     trigger.cpp
     trigtype.cpp
@@ -188,15 +183,7 @@ set(REDALERT_SRC
     warhead.cpp
     weapon.cpp
     winstub.cpp
-    wol_cgam.cpp
-    wol_chat.cpp
-    wol_dnld.cpp
     wol_gsup.cpp
-    wol_logn.cpp
-    wol_main.cpp
-    wol_opt.cpp
-    wolapiob.cpp
-    woledit.cpp
     wolstrng.cpp
     wsproto.cpp
     wspudp.cpp

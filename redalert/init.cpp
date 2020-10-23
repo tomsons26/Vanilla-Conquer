@@ -125,12 +125,6 @@ void Init_Random(void);
 bool Load_Recording_Values(CCFileClass& file);
 bool Save_Recording_Values(CCFileClass& file);
 
-#ifdef WOLAPI_INTEGRATION
-extern int WOL_Main();
-#include "WolapiOb.h"
-extern WolapiObject* pWolapi;
-#endif
-
 #ifdef FIXIT_VERSION_3
 bool Expansion_Dialog(bool bCounterstrike);
 #endif
@@ -658,11 +652,6 @@ bool Select_Game(bool fade)
             if (Special.IsFromInstall)
                 selection = SEL_START_NEW_GAME;
 
-#ifdef WOLAPI_INTEGRATION
-            if (pWolapi)
-                selection = SEL_MULTIPLAYER_GAME; //	We are returning from a game.
-#endif
-
             if (selection == SEL_NONE) {
 #ifdef FIXIT_ANTS
                 AntsEnabled = false;
@@ -888,9 +877,6 @@ bool Select_Game(bool fade)
             **	network play.
             */
             case SEL_MULTIPLAYER_GAME:
-#ifdef WOLAPI_INTEGRATION
-                if (!pWolapi) {
-#endif
                     switch (Session.Type) {
 
                     /*
@@ -963,22 +949,13 @@ bool Select_Game(bool fade)
                         }
 #endif
                         break;
-
-#ifndef WOLAPI_INTEGRATION
                     /*
                     ** Handle being spawned from WChat. Internet play based on IPX code.
                     */
                     case GAME_INTERNET:
                         break;
-
-#endif //	!WOLAPI_INTEGRATION
                     }
-#ifdef WOLAPI_INTEGRATION
-                } //	if( !pWolapi )
 
-                if (pWolapi)
-                    Session.Type = GAME_INTERNET;
-#endif
                 // debugprint( "Session.Type = %i\n", Session.Type );
                 switch (Session.Type) {
                 /*
@@ -986,9 +963,7 @@ bool Select_Game(bool fade)
                 */
                 case GAME_MODEM:
                 case GAME_NULL_MODEM:
-#ifndef WOLAPI_INTEGRATION
-                case GAME_INTERNET:
-#endif
+
                 case GAME_SKIRMISH:
                     Theme.Fade_Out();
                     process = false;
@@ -998,50 +973,6 @@ bool Select_Game(bool fade)
                     Options.ScoreVolume = 0;
 #endif
                     break;
-
-#ifdef WOLAPI_INTEGRATION //	implies also WINSOCK_IPX
-                case GAME_INTERNET:
-                    if (PacketTransport)
-                        delete PacketTransport;
-#ifdef NETWORKING
-                    PacketTransport = new UDPInterfaceClass;
-#endif
-                    assert(PacketTransport != NULL);
-                    if (PacketTransport->Init()) {
-                        switch (WOL_Main()) {
-                        case 1:
-                            //	Start game.
-#ifdef FIXIT_VERSION_3
-                            Options.ScoreVolume = Options.MultiScoreVolume;
-#else
-                            Options.ScoreVolume = 0;
-#endif
-                            process = false;
-                            Theme.Fade_Out();
-                            break;
-                        case 0:
-                            //	User cancelled.
-                            Session.Type = GAME_NORMAL;
-                            display = true;
-                            selection = SEL_MULTIPLAYER_GAME; // SEL_NONE;
-                            delete PacketTransport;
-                            PacketTransport = NULL;
-                            break;
-                        case -1:
-                            //	Patch was downloaded. Exit app.
-                            Theme.Fade_Out();
-                            BlackPalette.Set(FADE_PALETTE_SLOW);
-                            return false;
-                        }
-                    } else {
-                        Session.Type = GAME_NORMAL;
-                        display = true;
-                        selection = SEL_MULTIPLAYER_GAME; // SEL_NONE;
-                        delete PacketTransport;
-                        PacketTransport = NULL;
-                    }
-                    break;
-#endif
 
                 /*
                 **	Network (IPX): start a new network game.
@@ -1352,23 +1283,6 @@ bool Select_Game(bool fade)
     Map.Flag_To_Redraw();
     Call_Back();
     Map.Render();
-
-#ifdef WOLAPI_INTEGRATION
-
-    // ajw debugging only
-    //						debugprint( "Debugging Session...\n" );
-    //						debugprint( "Session.Players count is %i.\n", Session.Players.Count() );
-    for (i = 0; i < Session.Players.Count(); i++) {
-        NetNumType net;
-        NetNodeType node;
-        Session.Players[i]->Address.Get_Address(net, node);
-        //							debugprint( "Player %i, %s, color %i, ip %i.%i.%i.%i.%i.%i\n", i,
-        //Session.Players[i]->Name, 								Session.Players[i]->Player.Color, node[0], node[1], node[2], node[3], node[4],
-        //node[5] );
-    }
-    //						debugprint( "PlanetWestwoodPortNumber is %i\n", PlanetWestwoodPortNumber );
-
-#endif
 
     return (true);
 }
@@ -2738,14 +2652,6 @@ static void Init_Bootstrap_Mixfiles(void)
 {
     int temp = RequiredCD;
     RequiredCD = -2;
-
-#ifdef WOLAPI_INTEGRATION
-    CCFileClass fileWolapiMix("WOLAPI.MIX");
-    if (fileWolapiMix.Is_Available()) {
-        new MFCD("WOLAPI.MIX", &FastKey);
-        MFCD::Cache("WOLAPI.MIX");
-    }
-#endif
 
 #ifdef FIXIT_CSII //	Ok. ajw
     CCFileClass file2("EXPAND2.MIX");

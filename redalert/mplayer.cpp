@@ -43,10 +43,6 @@
 
 extern bool Is_Mission_Counterstrike(char* file_name);
 
-#ifdef WOLAPI_INTEGRATION
-#include "WolStrng.h"
-#endif
-
 /***********************************************************************************************
  * Select_MPlayer_Game -- prompts user for NULL-Modem, Modem, or Network game                  *
  *                                                                                             *
@@ -68,13 +64,8 @@ GameType Select_MPlayer_Game(void)
     //	Dialog & button dimensions
     //------------------------------------------------------------------------
     int d_dialog_w = 190 * RESFACTOR;
-#ifdef WOLAPI_INTEGRATION
-    int d_dialog_h = 89 * RESFACTOR; //	ajw
-    int d_dialog_y = (((255 * RESFACTOR) - d_dialog_h) / 2);
-#else
     int d_dialog_h = 78 * RESFACTOR;
     int d_dialog_y = 90 * RESFACTOR;
-#endif
     int d_dialog_x = (((320 * RESFACTOR) - d_dialog_w) / 2);
     int d_dialog_cx = d_dialog_x + (d_dialog_w / 2);
 
@@ -96,22 +87,10 @@ GameType Select_MPlayer_Game(void)
     int d_ipx_x = d_dialog_cx - d_ipx_w / 2;
     int d_ipx_y = d_skirmish_y + d_skirmish_h + 2 * RESFACTOR;
 
-#ifdef WOLAPI_INTEGRATION
-    //	ajw 7/2/98 - added button
-    int d_wol_w = 80 * RESFACTOR;
-    int d_wol_h = 9 * RESFACTOR;
-    int d_wol_x = d_dialog_cx - d_wol_w / 2;
-    int d_wol_y = d_ipx_y + d_ipx_h + 2 * RESFACTOR;
-#endif
-
     int d_cancel_w = 60 * RESFACTOR;
     int d_cancel_h = 9 * RESFACTOR;
     int d_cancel_x = d_dialog_cx - d_cancel_w / 2;
-#ifdef WOLAPI_INTEGRATION
-    int d_cancel_y = d_wol_y + d_wol_h + d_margin;
-#else
     int d_cancel_y = d_ipx_y + d_ipx_h + d_margin;
-#endif
 
 #ifdef WIN32
     GraphicBufferClass seen_buff_save(VisiblePage.Get_Width(), VisiblePage.Get_Height(), (void*)NULL);
@@ -125,16 +104,8 @@ GameType Select_MPlayer_Game(void)
         BUTTON_MODEMSERIAL = 100,
         BUTTON_SKIRMISH,
         BUTTON_IPX,
-#ifdef WOLAPI_INTEGRATION
-        BUTTON_WOL, //	ajw
-#endif
         BUTTON_CANCEL,
-
-#ifdef WOLAPI_INTEGRATION
-        NUM_OF_BUTTONS = 5, //	ajw
-#else
         NUM_OF_BUTTONS = 4,
-#endif
     };
 
     int num_of_buttons = NUM_OF_BUTTONS - (Ipx.Is_IPX() ? 0 : 1);
@@ -186,11 +157,6 @@ GameType Select_MPlayer_Game(void)
 
     TextButtonClass ipxbtn(BUTTON_IPX, TXT_NETWORK, TPF_BUTTON, d_ipx_x, d_ipx_y, d_ipx_w, d_ipx_h);
 
-#ifdef WOLAPI_INTEGRATION
-    //	ajw
-    TextButtonClass wolbtn(BUTTON_WOL, TXT_WOL_INTERNETBUTTON, TPF_BUTTON, d_wol_x, d_wol_y, d_wol_w, d_wol_h);
-#endif
-
     if (!Ipx.Is_IPX()) {
         d_cancel_y = d_ipx_y;
         d_dialog_h -= d_cancel_h;
@@ -213,9 +179,6 @@ GameType Select_MPlayer_Game(void)
     if (Ipx.Is_IPX()) {
         ipxbtn.Add_Tail(*commands);
     }
-#ifdef WOLAPI_INTEGRATION
-    wolbtn.Add_Tail(*commands); //	ajw
-#endif
     cancelbtn.Add_Tail(*commands);
 
     //------------------------------------------------------------------------
@@ -226,19 +189,9 @@ GameType Select_MPlayer_Game(void)
     buttons[1] = &skirmishbtn;
     if (Ipx.Is_IPX()) {
         buttons[2] = &ipxbtn;
-#ifdef WOLAPI_INTEGRATION
-        buttons[3] = &wolbtn; //	ajw
-        buttons[4] = &cancelbtn;
-#else
         buttons[3] = &cancelbtn;
-#endif
     } else {
-#ifdef WOLAPI_INTEGRATION
-        buttons[2] = &wolbtn; //	ajw
-        buttons[3] = &cancelbtn;
-#else
         buttons[2] = &cancelbtn;
-#endif
     }
     buttons[curbutton]->Turn_On();
 
@@ -323,13 +276,6 @@ GameType Select_MPlayer_Game(void)
             selection = BUTTON_IPX;
             pressed = true;
             break;
-
-#ifdef WOLAPI_INTEGRATION
-        case (BUTTON_WOL | KN_BUTTON): //	ajw
-            selection = BUTTON_WOL;
-            pressed = true;
-            break;
-#endif
 
         case (KN_ESC):
         case (BUTTON_CANCEL | KN_BUTTON):
@@ -419,13 +365,6 @@ GameType Select_MPlayer_Game(void)
                 retval = GAME_IPX;
                 process = false;
                 break;
-
-#ifdef WOLAPI_INTEGRATION
-            case (BUTTON_WOL): //	ajw
-                retval = GAME_INTERNET;
-                process = false;
-                break;
-#endif
 
             case (BUTTON_CANCEL):
                 retval = GAME_NORMAL;
