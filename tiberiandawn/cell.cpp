@@ -52,11 +52,12 @@
  *   CellClass::Get_Trigger -- retrieves reference to the cell's trigger                       *
  *   CellClass::Goodie_Check -- Performs crate discovery logic.                                *
  *   CellClass::Incoming -- Causes objects in cell to "run for cover".                         *
+ *   CellClass::Is_Bridge_Here -- Checks to see if this is a bridge occupied cell.             *
  *   CellClass::Is_Generally_Clear -- Determines if cell can be built upon.                    *
  *   CellClass::Occupy_Down -- Flag occupation of specified cell.                              *
  *   CellClass::Occupy_Unit -- Marks cell as unit occupied.                                    *
  *   CellClass::Occupy_Up -- Removes occupation flag from the specified cell.                  *
- *   CellClass::Overlap_Down -- This routine is used to mark a cell as being spilled over (overla*
+ *   CellClass::Overlap_Down -- This routine is used to mark a cell as being spilled over (over*
  *   CellClass::Overlap_Unit -- Marks cell as being overlapped by unit.                        *
  *   CellClass::Overlap_Up -- Removes overlap flag for the cell.                               *
  *   CellClass::Read -- Reads a particular cell value from a save game file.                   *
@@ -66,51 +67,19 @@
  *   CellClass::Reduce_Wall -- Damages a wall, if damage is high enough.                       *
  *   CellClass::Reserve_Cell -- Marks a cell as being occupied by the specified unit ID.       *
  *   CellClass::Shimmer -- Causes all objects in the cell to shimmer.                          *
- *   CellClass::Spot_Index -- returns cell sub-coord index for given COORD                     *
+ *   CellClass::Spot_Index -- returns cell sub-coord index for given COORDINATE                *
  *   CellClass::Tiberium_Adjust -- Adjust the look of the Tiberium for smooth.                 *
- *   CellClass::Validate -- validates cell's number                                            *
  *   CellClass::Wall_Update -- Updates the imagery for wall objects in cell.                   *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "function.h"
 
 /*
-** New sidebar for GlyphX multiplayer. ST - 3/26/2019 12:24PM
+** New sidebar for GlyphX multiplayer. ST - 8/2/2019 2:50PM
 */
 #include "sidebarglyphx.h"
 
 #define FIXUP 0
-
-/***********************************************************************************************
- * CellClass::Validate -- validates cell's number                                              *
- *                                                                                             *
- * INPUT:                                                                                      *
- *		none. *
- *                                                                                             *
- * OUTPUT:                                                                                     *
- *		1 = ok, 0 = error *
- *                                                                                             *
- * WARNINGS:                                                                                   *
- *		none. *
- *                                                                                             *
- * HISTORY:                                                                                    *
- *   08/09/1995 BRR : Created.                                                                 *
- *=============================================================================================*/
-#ifdef CHEAT_KEYS
-int CellClass::Validate(void) const
-{
-    int num;
-
-    num = Cell_Number();
-    if (num < 0 || num > 4095) {
-        Validate_Error("CELL");
-        return (0);
-    } else
-        return (1);
-}
-#else
-#define Validate()
-#endif
 
 /***********************************************************************************************
  * CellClass::CellClass -- Constructor for cell objects.                                       *
@@ -126,16 +95,37 @@ int CellClass::Validate(void) const
  *                                                                                             *
  * HISTORY:                                                                                    *
  *   08/09/1994 JLB : Created.                                                                 *
+ *   02/20/1996 JLB : Uses initializer list.                                                   *
  *=============================================================================================*/
 CellClass::CellClass(void)
+    : IsPlot(false)
+    , IsCursorHere(false)
+    , IsMapped(false)
+    , IsVisible(false)
+    , IsTrigger(false)
+    , IsWaypoint(false)
+    , IsRadarCursor(false)
+    , IsFlagged(false)
+
+    , TType(TEMPLATE_NONE)
+    , TIcon(0)
+    , Overlay(OVERLAY_NONE)
+    , OverlayData(0)
+    , Smudge(SMUDGE_NONE)
+    , SmudgeData(0)
+    , Owner(HOUSE_NONE)
+    , InfType(HOUSE_NONE)
+    , OccupierPtr(0)
+    , Land(LAND_CLEAR)
+    , OverrideLand(LAND_CLEAR)
+    , IsMappedByPlayerMask(0)
+    , IsVisibleByPlayerMask(0)
+    , CTFFlag(NULL)
 {
-    memset(this, 0, sizeof(CellClass));
-    Overlay = OVERLAY_NONE;
-    Smudge = SMUDGE_NONE;
-    TType = TEMPLATE_NONE;
-    Owner = HOUSE_NONE;
-    InfType = HOUSE_NONE;
-    OverrideLand = LAND_COUNT;
+    Flag.Composite = 0;
+    for (int index = 0; index < sizeof(Overlapper) / sizeof(Overlapper[0]); index++) {
+        Overlapper[index] = 0;
+    }
 }
 
 /***********************************************************************************************
@@ -158,7 +148,8 @@ CellClass::CellClass(void)
  *=============================================================================================*/
 int CellClass::Cell_Color(bool override) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     BuildingClass* object = Cell_Building();
     if (object) {
         return (object->House->Class->Color);
@@ -192,7 +183,8 @@ int CellClass::Cell_Color(bool override) const
  *=============================================================================================*/
 TechnoClass* CellClass::Cell_Techno(int x, int y) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     ObjectClass* object;
     COORDINATE click; // Coordinate of click relative to cell corner.
     TechnoClass* close = NULL;
@@ -208,11 +200,9 @@ TechnoClass* CellClass::Cell_Techno(int x, int y) const
         object = Cell_Occupier();
         while (object && object->IsActive) {
             if (object->Is_Techno()) {
-                COORDINATE coord; // Coordinate relative to cell corner.
-                long dist;
-
-                coord = object->Center_Coord() & 0x00FF00FFL;
-                dist = Distance(coord, click);
+                // Coordinate relative to cell corner.
+                COORDINATE coord = Coord_Fraction(object->Center_Coord());
+                long dist = Distance(coord, click);
                 if (!close || dist < distance) {
                     close = (TechnoClass*)object;
                     distance = dist;
@@ -239,10 +229,12 @@ TechnoClass* CellClass::Cell_Techno(int x, int y) const
  *=========================================================================*/
 ObjectClass* CellClass::Cell_Find_Object(RTTIType rtti) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+    assert(rtti != RTTI_NONE);
+
     ObjectClass* object = Cell_Occupier();
 
-    while (object && object->IsActive) {
+    while (object != NULL && object->IsActive) {
         if (object->What_Am_I() == rtti) {
             return (object);
         }
@@ -271,7 +263,8 @@ ObjectClass* CellClass::Cell_Find_Object(RTTIType rtti) const
  *=============================================================================================*/
 BuildingClass* CellClass::Cell_Building(void) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     return ((BuildingClass*)Cell_Find_Object(RTTI_BUILDING));
 }
 
@@ -294,7 +287,8 @@ BuildingClass* CellClass::Cell_Building(void) const
  *=============================================================================================*/
 TerrainClass* CellClass::Cell_Terrain(void) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     return ((TerrainClass*)Cell_Find_Object(RTTI_TERRAIN));
 }
 
@@ -321,7 +315,8 @@ TerrainClass* CellClass::Cell_Terrain(void) const
  *=============================================================================================*/
 ObjectClass* CellClass::Cell_Object(int x, int y) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     ObjectClass* ptr;
 
     /*
@@ -364,7 +359,8 @@ ObjectClass* CellClass::Cell_Object(int x, int y) const
  *=============================================================================================*/
 void CellClass::Redraw_Objects(bool forced)
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     CELL cell = Cell_Number();
 
     if (Map.In_View(cell) && (forced || !Map.Is_Cell_Flagged(cell))) {
@@ -377,9 +373,9 @@ void CellClass::Redraw_Objects(bool forced)
         /*
         **	Flag the main object in the cell to be redrawn.
         */
-        if (Cell_Occupier()) {
+        if (Cell_Occupier() != NULL) {
             ObjectClass* optr = Cell_Occupier();
-            while (optr) {
+            while (optr != NULL) {
                 if (optr->IsActive) {
                     optr->Mark(MARK_CHANGE);
                 }
@@ -391,9 +387,9 @@ void CellClass::Redraw_Objects(bool forced)
         **	Flag any overlapping object in this cell to be redrawn.
         */
         for (int index = 0; index < sizeof(Overlapper) / sizeof(Overlapper[0]); index++) {
-            if (Overlapper[index]) {
+            if (Overlapper[index] != NULL) {
                 if (!Overlapper[index]->IsActive) {
-                    Overlapper[index] = 0;
+                    Overlapper[index] = NULL;
                 } else {
                     Overlapper[index]->Mark(MARK_CHANGE);
                 }
@@ -408,9 +404,10 @@ void CellClass::Redraw_Objects(bool forced)
  *    This determines if the cell can become a proper foundation for                           *
  *    building placement.                                                                      *
  *                                                                                             *
- * INPUT:   none                                                                               *
+ * INPUT:   loco     -- The locomotion of the object trying to consider if this cell is        *
+ *                      generally clear. Buildings use the value of SPEED_NONE.                *
  *                                                                                             *
- * OUTPUT:  bool; Can the cell be built upon?                                                  *
+ * OUTPUT:  bool; Is this cell generally clear (usually for building purposes)?                *
  *                                                                                             *
  * WARNINGS:   none                                                                            *
  *                                                                                             *
@@ -419,41 +416,55 @@ void CellClass::Redraw_Objects(bool forced)
  *=============================================================================================*/
 bool CellClass::Is_Generally_Clear(bool ignore_cloaked) const
 {
-    Validate();
-    if (ScenarioInit)
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
+    /*
+    **	During scenario initialization, passability is always guaranteed.
+    */
+    if (ScenarioInit) {
         return (true);
-    if (Flag.Composite || IsFlagged || Cell_Occupier()) {
+    }
+
+    /*
+    **	If there is an object there, then don't allow building.
+    */
+    if (Flag.Composite || Cell_Occupier()) {
         if (!ignore_cloaked
             || (Cell_Occupier() && Cell_Occupier()->Is_Techno() && ((TechnoClass*)Cell_Occupier())->Cloak != CLOAKED)) {
             return (false);
         }
     }
+
+    /*
+    **	Prevents a building from being placed over a flag object.
+    */
+    if (IsFlagged) {
+        return (false);
+    }
+
+    /*
+    **	Walls are always considered to block the terrain for general passability
+    **	purposes. In normal game mode, all overlays are not buildable.
+    */
+    if (Overlay != OVERLAY_NONE
+        && (Overlay == OVERLAY_FLAG_SPOT || !Debug_Map || OverlayTypeClass::As_Reference(Overlay).IsWall)) {
+        return (false);
+    }
+
+    /*
+    **	Building over a bib is not allowed.
+    */
     if (Smudge != SMUDGE_NONE && SmudgeTypeClass::As_Reference(Smudge).IsBib && Owner != HOUSE_NONE) {
         return (false);
     }
-    if (Overlay != OVERLAY_NONE && (Overlay == OVERLAY_FLAG_SPOT || OverlayTypeClass::As_Reference(Overlay).IsWall)) {
-        return (false);
-    }
+
 
 #ifdef ADVANCED
     /*
-    **	Building certain kinds of terrain is prohibited -- bridges in particular.
+    **	Building on certain kinds of terrain is prohibited -- bridges in particular.
     */
-    switch (TType) {
-    case TEMPLATE_BRIDGE1:
-    case TEMPLATE_BRIDGE1D:
-    case TEMPLATE_BRIDGE2:
-    case TEMPLATE_BRIDGE2D:
-    case TEMPLATE_BRIDGE3:
-    case TEMPLATE_BRIDGE3D:
-    case TEMPLATE_BRIDGE4:
-    case TEMPLATE_BRIDGE4D:
-    case TEMPLATE_FORD1:
-    case TEMPLATE_FORD2:
+    if (Is_Bridge_Here() || TType == TEMPLATE_FORD1 || TType == TEMPLATE_FORD2) {
         return (false);
-
-    default:
-        break;
     }
 #endif
 
@@ -478,7 +489,8 @@ bool CellClass::Is_Generally_Clear(bool ignore_cloaked) const
  *=============================================================================================*/
 void CellClass::Recalc_Attributes(void)
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     /*
     **	Check for wall effects.
     */
@@ -544,8 +556,14 @@ void CellClass::Recalc_Attributes(void)
  *=============================================================================================*/
 void CellClass::Occupy_Down(ObjectClass* object)
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+    assert(object != NULL && object->IsActive);
+
     ObjectClass* optr;
+
+    if (object == NULL) {
+        return;
+    }
 
     /*
     **	If the specified object is already part of the occupation list, then don't add
@@ -553,7 +571,7 @@ void CellClass::Occupy_Down(ObjectClass* object)
     */
     if (Cell_Occupier()) {
         optr = Cell_Occupier();
-        while (optr) {
+        while (optr != NULL) {
             if (optr == object) {
                 return;
             }
@@ -572,7 +590,7 @@ void CellClass::Occupy_Down(ObjectClass* object)
     **	If being placed down on a visible square, then flag this
     **	techno object as being revealed to the player.
     */
-    // Changes for GlyphX multiplayer. ST - 4/17/2019 3:02PM
+    // Changes for client/server multiplayer. ST - 8/2/2019 2:51PM
     // if (IsVisible || GameToPlay != GAME_NORMAL) {
     //	object->Revealed(PlayerPtr);
     //}
@@ -632,26 +650,29 @@ void CellClass::Occupy_Down(ObjectClass* object)
  *=============================================================================================*/
 void CellClass::Occupy_Up(ObjectClass* object)
 {
-    Validate();
-    ObjectClass* optr = NULL; // Working pointer to the objects in the chain.
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+    assert(object != NULL && object->IsActive);
 
-    if (Cell_Occupier()) {
-        optr = Cell_Occupier();
-    }
+    if (object == NULL)
+        return;
+
+    ObjectClass* optr = Cell_Occupier(); // Working pointer to the objects in the chain.
+
     if (optr == object) {
         OccupierPtr = object->Next;
         object->Next = 0;
     } else {
-        while (optr) {
+        bool found = false;
+        while (optr != NULL) {
             if (optr->Next == object) {
                 optr->Next = object->Next;
                 object->Next = 0;
+                found = true;
                 break;
             }
-            if (!optr->Next)
-                break;
             optr = optr->Next;
         }
+        //		assert(found);
     }
     Map.Radar_Pixel(Cell_Number());
 
@@ -703,11 +724,15 @@ void CellClass::Occupy_Up(ObjectClass* object)
  *=============================================================================================*/
 void CellClass::Overlap_Down(ObjectClass* object)
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+    assert(object != NULL && object->IsActive);
+
     ObjectClass** ptr = 0;
 
-    if (!object)
+    if (!object) {
         return;
+    }
+
     int index;
     for (index = 0; index < sizeof(Overlapper) / sizeof(Overlapper[0]); index++) {
         if (Overlapper[index] == object)
@@ -782,15 +807,15 @@ void CellClass::Overlap_Down(ObjectClass* object)
  *=============================================================================================*/
 void CellClass::Overlap_Up(ObjectClass* object)
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+    assert(object != NULL && object->IsActive);
+
     for (int index = 0; index < sizeof(Overlapper) / sizeof(Overlapper[0]); index++) {
         if (Overlapper[index] == object) {
             Overlapper[index] = 0;
             break;
         }
     }
-
-    // Map.Validate();
 }
 
 /***********************************************************************************************
@@ -810,7 +835,8 @@ void CellClass::Overlap_Up(ObjectClass* object)
  *=============================================================================================*/
 UnitClass* CellClass::Cell_Unit(void) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     return ((UnitClass*)Cell_Find_Object(RTTI_UNIT));
 }
 
@@ -832,7 +858,8 @@ UnitClass* CellClass::Cell_Unit(void) const
  *=============================================================================================*/
 InfantryClass* CellClass::Cell_Infantry(void) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     return ((InfantryClass*)Cell_Find_Object(RTTI_INFANTRY));
 }
 
@@ -899,7 +926,8 @@ bool CellClass::Get_Template_Info(char* template_name, int& icon, void*& image_d
  *=============================================================================================*/
 void CellClass::Draw_It(int x, int y, int draw_type) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     TemplateTypeClass const* ttype = 0;
     int icon; // The icon number to use from the template set.
     CELL cell = Cell_Number();
@@ -955,19 +983,17 @@ void CellClass::Draw_It(int x, int y, int draw_type) const
             if (Debug_Map && Debug_Passable) {
                 if (::Ground[Land].Cost[0] == 0
                     || (Cell_Occupier() != NULL && Cell_Occupier()->What_Am_I() != RTTI_INFANTRY)) { // impassable
-                    remap = Map.FadingRed;
+                    remap = DisplayClass::FadingRed;
                 } else {
                     if (::Ground[Land].Cost[0] > 0x70) { // pretty passable
-                        remap = Map.FadingGreen;
+                        remap = DisplayClass::FadingGreen;
                     } else {
-                        remap = Map.FadingYellow; // moderately passable
+                        remap = DisplayClass::FadingYellow; // moderately passable
                     }
                 }
             }
 #endif
 
-            // ****** maybe this icon shouldn't be drawn if it is known that the cell will be covered
-            //			 with shadow.
             /*
             **	This is the underlying terrain icon.
             */
@@ -1040,7 +1066,7 @@ void CellClass::Draw_It(int x, int y, int draw_type) const
             */
             if (Overlay != OVERLAY_NONE) {
                 OverlayTypeClass const& otype = OverlayTypeClass::As_Reference(Overlay);
-                IsTheaterShape = (bool)otype.IsTheater;
+                IsTheaterShape = (bool)otype.IsTheater; // Tell Build_Frame if this overlay is theater specific
                 CC_Draw_Shape(otype.Get_Image_Data(),
                               OverlayData,
                               (x + (CELL_PIXEL_W >> 1)),
@@ -1048,7 +1074,7 @@ void CellClass::Draw_It(int x, int y, int draw_type) const
                               WINDOW_TACTICAL,
                               SHAPE_CENTER | SHAPE_WIN_REL | SHAPE_GHOST,
                               NULL,
-                              Map.UnitShadow);
+                              DisplayClass::UnitShadow);
                 IsTheaterShape = false;
             }
 
@@ -1071,7 +1097,7 @@ void CellClass::Draw_It(int x, int y, int draw_type) const
                 **	Draw the cell's Waypoint designation if there is one.
                 */
                 if (IsWaypoint) {
-                    for (i = 0; i < 26; i++) {
+                    for (i = 0; i < WAYPT_HOME; i++) {
                         if (Waypoint[i] == Cell_Number()) {
                             waypt[0] = 'A' + i;
                             waypt[1] = 0;
@@ -1117,9 +1143,9 @@ void CellClass::Draw_It(int x, int y, int draw_type) const
                 **	Draw the hash-mark cursor:
                 */
                 if (Map.ProximityCheck && Is_Generally_Clear()) {
-                    LogicPage->Draw_Stamp(Map.TransIconset, 0, x, y, NULL, WINDOW_TACTICAL);
+                    LogicPage->Draw_Stamp(DisplayClass::TransIconset, 0, x, y, NULL, WINDOW_TACTICAL);
                 } else {
-                    LogicPage->Draw_Stamp(Map.TransIconset, 2, x, y, NULL, WINDOW_TACTICAL);
+                    LogicPage->Draw_Stamp(DisplayClass::TransIconset, 2, x, y, NULL, WINDOW_TACTICAL);
                 }
 
 #ifdef SCENARIO_EDITOR
@@ -1158,6 +1184,9 @@ void CellClass::Draw_It(int x, int y, int draw_type) const
                     case RTTI_SMUDGETYPE:
                         SmudgeTypeClass::As_Reference(((SmudgeTypeClass*)Map.PendingObject)->Type).Draw_It(x, y, 0);
                         break;
+
+                    default:
+                        break;
                     }
                 }
 #endif
@@ -1184,7 +1213,9 @@ void CellClass::Draw_It(int x, int y, int draw_type) const
  *=============================================================================================*/
 void CellClass::Concrete_Calc(void)
 {
-    Validate();
+#ifdef OBSOLETE
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     static FacingType _even[5] = {FACING_N, FACING_S, FACING_SW, FACING_W, FACING_NW};
     static FacingType _odd[5] = {FACING_N, FACING_NE, FACING_E, FACING_SE, FACING_S};
     FacingType* ptr; // Working pointer into adjacent cell list.
@@ -1223,13 +1254,13 @@ void CellClass::Concrete_Calc(void)
     */
     index = 0;
     for (int i = 0; i < (sizeof(_even) / sizeof(_even[0])); i++) {
-        CellClass* cellptr = Adjacent_Cell(*ptr++);
+        CellClass& cellptr = Adjacent_Cell(*ptr++);
 
         //		if ((cellptr->IsConcrete) ||
         //					cellptr->Concrete == C_UPDOWN_RIGHT ||
         //					cellptr->Concrete == C_UPDOWN_LEFT) {
 
-        if (cellptr && cellptr->Overlay == OVERLAY_CONCRETE) {
+        if (cellptr.Overlay == OVERLAY_CONCRETE) {
             index |= (1 << i);
         }
     }
@@ -1383,6 +1414,7 @@ void CellClass::Concrete_Calc(void)
         // Array[cell].Base = 0;
         Redraw_Objects();
     }
+#endif
 }
 
 /***********************************************************************************************
@@ -1405,8 +1437,7 @@ void CellClass::Concrete_Calc(void)
  *=============================================================================================*/
 void CellClass::Wall_Update(void)
 {
-    Validate();
-    static FacingType _offsets[5] = {FACING_N, FACING_E, FACING_S, FACING_W, FACING_NONE};
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
 
     if (Overlay == OVERLAY_NONE) {
         return;
@@ -1416,6 +1447,8 @@ void CellClass::Wall_Update(void)
     if (!wall.IsWall) {
         return;
     }
+
+    static FacingType _offsets[5] = {FACING_N, FACING_E, FACING_S, FACING_W, FACING_NONE};
 
     for (unsigned index = 0; index < (sizeof(_offsets) / sizeof(_offsets[0])); index++) {
         CellClass* newcell = Adjacent_Cell(_offsets[index]);
@@ -1484,7 +1517,8 @@ void CellClass::Wall_Update(void)
  *=============================================================================================*/
 COORDINATE CellClass::Cell_Coord(void) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     return (::Cell_Coord(Cell_Number()));
 }
 
@@ -1505,10 +1539,11 @@ COORDINATE CellClass::Cell_Coord(void) const
  *=============================================================================================*/
 int CellClass::Reduce_Tiberium(int levels)
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     int reducer = 0;
 
-    if (levels && Land == LAND_TIBERIUM) {
+    if (levels > 0 && Land == LAND_TIBERIUM) {
         if (OverlayData > levels) {
             OverlayData -= levels;
             reducer = levels;
@@ -1540,7 +1575,8 @@ int CellClass::Reduce_Tiberium(int levels)
  *=============================================================================================*/
 int CellClass::Reduce_Wall(int damage)
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     if (Overlay != OVERLAY_NONE) {
         bool destroyed = false;
         OverlayTypeClass const& wall = OverlayTypeClass::As_Reference(Overlay);
@@ -1561,7 +1597,6 @@ int CellClass::Reduce_Wall(int damage)
             if (destroyed) {
                 OverlayData += 16;
                 if ((OverlayData >> 4) >= wall.DamageLevels) {
-                    ObjectClass::Detach_This_From_All(As_Target());
                     Owner = HOUSE_NONE;
                     Overlay = OVERLAY_NONE;
                     OverlayData = 0;
@@ -1579,6 +1614,7 @@ int CellClass::Reduce_Wall(int damage)
                     CellClass* ecell = Adjacent_Cell(FACING_E);
                     if (ecell)
                         ecell->Wall_Update();
+                    ObjectClass::Detach_This_From_All(As_Target());
                     return (true);
                 }
             }
@@ -1604,7 +1640,8 @@ int CellClass::Reduce_Wall(int damage)
  *=============================================================================================*/
 TriggerClass* CellClass::Get_Trigger(void) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     if (IsTrigger) {
         return (CellTriggers[Cell_Number()]);
     }
@@ -1612,10 +1649,10 @@ TriggerClass* CellClass::Get_Trigger(void) const
 }
 
 /***********************************************************************************************
- * CellClass::Spot_Index -- returns cell sub-coord index for given COORD                       *
+ * CellClass::Spot_Index -- returns cell sub-coord index for given COORDINATE                  *
  *                                                                                             *
  * INPUT:                                                                                      *
- *      coord      COORD to compute index for                                                  *
+ *      coord      COORDINATE to compute index for                                             *
  *                                                                                             *
  * OUTPUT:                                                                                     *
  *      index into StoppingCoord that's closest to this coord                                  *
@@ -1629,13 +1666,13 @@ TriggerClass* CellClass::Get_Trigger(void) const
  *=============================================================================================*/
 int CellClass::Spot_Index(COORDINATE coord)
 {
-    COORDINATE rel = coord & 0x00FF00FFL; // Sub coordinate value within cell.
+    COORDINATE rel = Coord_Fraction(coord); // Sub coordinate value within cell.
 
     /*
     **	If the coordinate is close enough to the center of the cell, then return
     **	the center position index.
     */
-    if (Distance(rel, 0x00800080L) < 60) {
+    if (Distance(rel, (COORDINATE)0x00800080L) < 60) {
         return (0);
     }
 
@@ -1657,7 +1694,7 @@ int CellClass::Spot_Index(COORDINATE coord)
  * CellClass::Closest_Free_Spot -- returns free spot closest to given coord                    *
  *                                                                                             *
  * Similar to the CellClass::Free_Spot; this routine finds the spot in                         *
- * the cell closest to the given coordinate, and returns the COORD of                          *
+ * the cell closest to the given coordinate, and returns the COORDINATE of                     *
  * that spot if it's available, NULL if it's not.                                              *
  *                                                                                             *
  * INPUT:                                                                                      *
@@ -1667,7 +1704,7 @@ int CellClass::Spot_Index(COORDINATE coord)
  *                   not, then this parameter will be true.                                    *
  *                                                                                             *
  * OUTPUT:                                                                                     *
- *  COORD of free spot, NULL if none. The coordinate return value does not alter the cell      *
+ *  COORDINATE of free spot, NULL if none. The coordinate return value does not alter the cell *
  *             coordinate data portions of the coordinate passed in. Only the lower sub-cell   *
  *             data is altered.                                                                *
  *                                                                                             *
@@ -1681,12 +1718,13 @@ int CellClass::Spot_Index(COORDINATE coord)
  *=============================================================================================*/
 COORDINATE CellClass::Closest_Free_Spot(COORDINATE coord, bool any) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     int spot_index = Spot_Index(coord);
 
     /*
     **	This precalculated sequence table records the closest spots to any given spot. Sequential
-    **	examination of these spots for availability ensures that the closes available one is
+    **	examination of these spots for availability ensures that the closest available one is
     **	discovered first.
     */
     static unsigned char _sequence[5][4] = {{1, 2, 3, 4}, {0, 2, 3, 4}, {0, 1, 4, 3}, {0, 1, 4, 2}, {0, 2, 3, 1}};
@@ -1702,7 +1740,7 @@ COORDINATE CellClass::Closest_Free_Spot(COORDINATE coord, bool any) const
         {3, 4, 1, 2},
         {4, 1, 2, 3},
     };
-    coord &= 0xFF00FF00L;
+    coord = Coord_Whole(coord);
 
     /*
     **	Cells occupied by buildings or vehicles don't have any free spots.
@@ -1765,7 +1803,8 @@ COORDINATE CellClass::Closest_Free_Spot(COORDINATE coord, bool any) const
  *=============================================================================================*/
 int CellClass::Clear_Icon(void) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     CELL cell = Cell_Number();
     return ((cell & 0x03) | ((cell >> 4) & 0x0C));
 }
@@ -1790,14 +1829,16 @@ int CellClass::Clear_Icon(void) const
  *                                                                                             *
  * HISTORY:                                                                                    *
  *   01/10/1995 JLB : Created.                                                                 *
+ *   08/02/1996 JLB : Added the "nokidding" parameter.                                         *
  *=============================================================================================*/
 void CellClass::Incoming(COORDINATE threat, bool forced, bool nokidding)
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     ObjectClass* object = NULL;
 
     object = Cell_Occupier();
-    while (object) {
+    while (object != NULL) {
 
         /*
         **	Special check to make sure that friendly units never scatter.
@@ -1830,7 +1871,8 @@ void CellClass::Incoming(COORDINATE threat, bool forced, bool nokidding)
  *=============================================================================================*/
 CellClass const* CellClass::Adjacent_Cell(FacingType face) const
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     if (face == FACING_NONE) {
         return (this);
     }
@@ -1861,7 +1903,8 @@ CellClass const* CellClass::Adjacent_Cell(FacingType face) const
  *=========================================================================*/
 void CellClass::Adjust_Threat(HousesType house, int threat_value)
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     int region = Map.Cell_Region(Cell_Number());
 
     for (HousesType lp = HOUSE_FIRST; lp < HOUSE_COUNT; lp++) {
@@ -1899,7 +1942,8 @@ void CellClass::Adjust_Threat(HousesType house, int threat_value)
  *=============================================================================================*/
 long CellClass::Tiberium_Adjust(bool pregame)
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     if (Overlay != OVERLAY_NONE) {
         if (OverlayTypeClass::As_Reference(Overlay).Land == LAND_TIBERIUM) {
             static int _adj[9] = {0, 1, 3, 4, 6, 7, 8, 10, 11};
@@ -1917,8 +1961,7 @@ long CellClass::Tiberium_Adjust(bool pregame)
             ** (Skip those cells which aren't on the map)
             */
             for (FacingType face = FACING_FIRST; face < FACING_COUNT; face++) {
-                CELL cell = Cell_Number() + AdjacentCell[face];
-                if ((unsigned)cell >= MAP_CELL_TOTAL)
+                if ((unsigned)::Adjacent_Cell(Cell_Number(), face) >= MAP_CELL_TOTAL)
                     continue;
 
                 CellClass* adj = Adjacent_Cell(face);
@@ -1939,7 +1982,7 @@ long CellClass::Tiberium_Adjust(bool pregame)
 /***********************************************************************************************
  * CellClass::Goodie_Check -- Performs crate discovery logic.                                  *
  *                                                                                             *
- *    Call this routine whenever an object enters a cell. It will check for the existance      *
+ *    Call this routine whenever an object enters a cell. It will check for the existence      *
  *    of a crate and generate any "goodie" it might contain.                                   *
  *                                                                                             *
  * INPUT:   object   -- Pointer to the object that is triggering this crate.                   *
@@ -1955,73 +1998,55 @@ long CellClass::Tiberium_Adjust(bool pregame)
  *=============================================================================================*/
 bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
 {
-    Validate();
-    enum
-    {
-        MONEY,        // Cash award.
-        UNIT,         // A free unit.
-        NUKE,         // A nuclear device that explodes.
-        ION,          // Calls forth an ion blast on discoverer.
-        NUKE_MISSILE, // Gets a one time nuclear missile options.
-        ION_BLAST,    // Gets a one time ion blast option.
-        AIR_STRIKE,   // Gets a one time air strike option.
-        HEAL_BASE,    // Heals the player's entire base.
-        CLOAK,        // Units in region gain cloak ability.
-        EXPLOSION,    // Conventional explosion.
-        NAPALM,       // A napalm explosion.
-        SQUAD,        // A mixed squad of friendly infantry appear.
-        VISCEROID,    // A visceroid appears!
-        DARKNESS,     // Shroud the entire map.
-        REVEAL,       // Reveal the entire map.
-        TOTAL_CRATES,
-    };
-    static int _what[] = {DARKNESS,
-                          DARKNESS,
-                          REVEAL,
-                          REVEAL,
-                          NUKE,
-                          //		ION,ION,
-                          NUKE_MISSILE,
-                          ION_BLAST,
-                          ION_BLAST,
-                          AIR_STRIKE,
-                          AIR_STRIKE,
-                          AIR_STRIKE,
-                          AIR_STRIKE,
-                          HEAL_BASE,
-                          HEAL_BASE,
-                          CLOAK,
-                          CLOAK,
-                          EXPLOSION,
-                          EXPLOSION,
-                          EXPLOSION,
-                          EXPLOSION,
-                          NAPALM,
-                          NAPALM,
-                          NAPALM,
-                          SQUAD,
-                          SQUAD,
-                          SQUAD,
-                          SQUAD,
-                          SQUAD,
-                          UNIT,
-                          UNIT,
-                          UNIT,
-                          UNIT,
-                          UNIT,
-                          VISCEROID};
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
+    static int _what[] = {CRATE_DARKNESS,
+                          CRATE_DARKNESS,
+                          CRATE_REVEAL,
+                          CRATE_REVEAL,
+                          CRATE_NUKE,
+                          //		CRATE_ION,CRATE_ION,
+                          CRATE_NUKE_MISSILE,
+                          CRATE_ION_BLAST,
+                          CRATE_ION_BLAST,
+                          CRATE_AIR_STRIKE,
+                          CRATE_AIR_STRIKE,
+                          CRATE_AIR_STRIKE,
+                          CRATE_AIR_STRIKE,
+                          CRATE_HEAL_BASE,
+                          CRATE_HEAL_BASE,
+                          CRATE_CLOAK,
+                          CRATE_CLOAK,
+                          CRATE_EXPLOSION,
+                          CRATE_EXPLOSION,
+                          CRATE_EXPLOSION,
+                          CRATE_EXPLOSION,
+                          CRATE_NAPALM,
+                          CRATE_NAPALM,
+                          CRATE_NAPALM,
+                          CRATE_SQUAD,
+                          CRATE_SQUAD,
+                          CRATE_SQUAD,
+                          CRATE_SQUAD,
+                          CRATE_SQUAD,
+                          CRATE_UNIT,
+                          CRATE_UNIT,
+                          CRATE_UNIT,
+                          CRATE_UNIT,
+                          CRATE_UNIT,
+                          CRATE_VISCEROID};
 
     /*
     ** Crate types are only defined here so it needs to match my new global crate total ST - 6/4/96 2:16PM
     */
-#if (TOTAL_CRATES) == (TOTAL_CRATE_TYPES)
+#if (CRATE_COUNT) == (TOTAL_CRATE_TYPES)
 
 #else
     // Huge_Errrrror..... Oh NO!
 
 #endif
 
-    if (object && Overlay != OVERLAY_NONE && OverlayTypeClass::As_Reference(Overlay).IsCrate) {
+    if (object  != NULL && Overlay != OVERLAY_NONE && OverlayTypeClass::As_Reference(Overlay).IsCrate) {
         bool steel = (Overlay == OVERLAY_STEEL_CRATE);
         COORDINATE coord; // Temporary working coordinate value.
 
@@ -2053,7 +2078,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             int index;
             UnitClass* unit = 0;
             unsigned damage = 0;
-            int what = MONEY;
+            int what = CRATE_MONEY;
 
             if (GameToPlay != GAME_NORMAL && (Random_Pick(1, 2) == 1 || !object->House->BScan)) {
                 what = -1;
@@ -2065,7 +2090,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
                 if ((object->House->BScan & (STRUCTF_CONST | STRUCTF_REFINERY)) == STRUCTF_CONST
                     && object->House->Available_Money() < BuildingTypeClass::As_Reference(STRUCT_REFINERY).Cost) {
 
-                    what = MONEY;
+                    what = CRATE_MONEY;
                 }
 
                 /*
@@ -2077,7 +2102,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
                                                             + BuildingTypeClass::As_Reference(STRUCT_POWER).Cost)
                                                            * object->House->CostBias)) {
 
-                    what = UNIT;
+                    what = CRATE_UNIT;
                 }
 
                 bool allow_super = true;
@@ -2088,15 +2113,15 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
                 while (what == -1) {
                     what = _what[Random_Pick((unsigned)0, (unsigned)(sizeof(_what) / sizeof(_what[0]) - 1))];
 
-                    if (what == REVEAL && object->House->IsVisionary)
+                    if (what == CRATE_REVEAL && object->House->IsVisionary)
                         what = -1;
-                    if (what == AIR_STRIKE && (!allow_super || object->House->AirStrike.Is_Present()))
+                    if (what == CRATE_AIR_STRIKE && (!allow_super || object->House->AirStrike.Is_Present()))
                         what = -1;
-                    if (what == NUKE_MISSILE && (!allow_super || object->House->NukeStrike.Is_Present()))
+                    if (what == CRATE_NUKE_MISSILE && (!allow_super || object->House->NukeStrike.Is_Present()))
                         what = -1;
-                    if (what == ION_BLAST && (!allow_super || object->House->IonCannon.Is_Present()))
+                    if (what == CRATE_ION_BLAST && (!allow_super || object->House->IonCannon.Is_Present()))
                         what = -1;
-                    if (what == CLOAK && object->IsCloakable)
+                    if (what == CRATE_CLOAK && object->IsCloakable)
                         what = -1;
                 }
             }
@@ -2127,7 +2152,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             /*
             **	Give the player money.
             */
-            case MONEY:
+            case CRATE_MONEY:
                 new AnimClass(ANIM_CRATE_DOLLAR, Cell_Coord());
                 if (GameToPlay == GAME_NORMAL) {
                     HouseClass::As_Pointer(object->Owner())->Refund_Money(2000);
@@ -2139,7 +2164,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             /*
             **	Shroud the world in blackness.
             */
-            case DARKNESS: {
+            case CRATE_DARKNESS: {
                 new AnimClass(ANIM_CRATE_EMPULSE, Cell_Coord());
                 bool shroud = false;
                 if (GameToPlay != GAME_GLYPHX_MULTIPLAYER) {
@@ -2174,7 +2199,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             /*
             **	Reveal the entire map.
             */
-            case REVEAL: {
+            case CRATE_REVEAL: {
                 bool reveal = false;
                 if (GameToPlay != GAME_GLYPHX_MULTIPLAYER) {
                     if (object->House == PlayerPtr) {
@@ -2198,7 +2223,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             /*
             **	Try to create a unit where the crate was.
             */
-            case UNIT: {
+            case CRATE_UNIT: {
                 UnitTypeClass const* utp = NULL;
 
                 /*
@@ -2221,7 +2246,10 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
                     utp = &UnitTypeClass::As_Reference(UNIT_HARVESTER);
                 }
 
-                while (!utp) {
+                /*
+                **	If no unit type has been determined, then pick one at random.
+                */
+                while (utp == NULL) {
                     UnitType utype = Random_Pick(UNIT_FIRST, (UnitType)(UNIT_COUNT - 1));
                     if (utype != UNIT_MCV || MPlayerBases) {
                         utp = &UnitTypeClass::As_Reference(utype);
@@ -2232,9 +2260,9 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
                     }
                 }
 
-                UnitClass* unit = (UnitClass*)utp->Create_One_Of(object->House);
-                if (unit) {
-                    if (unit->Unlimbo(Cell_Coord())) {
+                UnitClass* goodie_unit = (UnitClass*)utp->Create_One_Of(object->House);
+                if (goodie_unit != NULL) {
+                    if (goodie_unit->Unlimbo(Cell_Coord())) {
                         return (false);
                     }
                     delete unit;
@@ -2244,7 +2272,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             /*
             **	Create a squad of miscellanous composition.
             */
-            case SQUAD:
+            case CRATE_SQUAD:
                 for (index = 0; index < 5; index++) {
                     static InfantryType _inf[] = {INFANTRY_E1,
                                                   INFANTRY_E1,
@@ -2267,21 +2295,21 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             /*
             **	Sometimes an explosion of great magnitude occurs.
             */
-            case NUKE:
+            case CRATE_NUKE:
                 new AnimClass(ANIM_ATOM_BLAST, Cell_Coord());
                 break;
 
             /*
             **	Sometimes an explosion of great magnitude occurs.
             */
-            case ION:
+            case CRATE_ION:
                 new AnimClass(ANIM_ION_CANNON, Cell_Coord());
                 break;
 
             /*
             **	A nuclear missile was discovered. Add it to the sidebar.
             */
-            case NUKE_MISSILE:
+            case CRATE_NUKE_MISSILE:
                 new AnimClass(ANIM_CRATE_MISSILE, Cell_Coord());
                 if (object->House->NukeStrike.Enable(true)) {
                     // Add to Glyphx multiplayer sidebar. ST - 3/22/2019 1:50PM
@@ -2303,7 +2331,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             /*
             **	A one time ion blast was discovered. Add it to the sidebar.
             */
-            case ION_BLAST:
+            case CRATE_ION_BLAST:
                 new AnimClass(ANIM_CRATE_EARTH, Cell_Coord());
                 if (object->House->IonCannon.Enable(true)) {
                     // Add to Glyphx multiplayer sidebar. ST - 3/22/2019 1:50PM
@@ -2325,7 +2353,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             /*
             **	A one time air strike can be called int. Add it to the sidebar.
             */
-            case AIR_STRIKE:
+            case CRATE_AIR_STRIKE:
                 new AnimClass(ANIM_CRATE_DEVIATOR, Cell_Coord());
                 if (object->House->AirStrike.Enable(true)) {
                     // Add to Glyphx multiplayer sidebar. ST - 3/22/2019 1:50PM
@@ -2347,7 +2375,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             /*
             **	A group of explosions are triggered around the crate.
             */
-            case EXPLOSION:
+            case CRATE_EXPLOSION:
                 damage = 400;
                 object->Take_Damage((int&)damage, 0, WARHEAD_HE);
                 for (index = 0; index < 5; index++) {
@@ -2361,7 +2389,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             /*
             **	A napalm blast is triggered.
             */
-            case NAPALM:
+            case CRATE_NAPALM:
                 coord = Coord_Mid(Cell_Coord(), object->Center_Coord());
                 new AnimClass(ANIM_NAPALM3, coord);
                 damage = 600;
@@ -2371,7 +2399,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             /*
             **	A visceroid appears and, boy, he's angry!
             */
-            case VISCEROID:
+            case CRATE_VISCEROID:
                 unit = new UnitClass(UNIT_VICE, HOUSE_JP);
                 if (unit) {
                     if (unit->Unlimbo(Cell_Coord())) {
@@ -2384,7 +2412,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             /*
             **	All objects within a certain range will gain the ability to cloak.
             */
-            case CLOAK:
+            case CRATE_CLOAK:
                 new AnimClass(ANIM_CRATE_STEALTH, Cell_Coord());
                 for (index = 0; index < Map.Layer[LAYER_GROUND].Count(); index++) {
                     ObjectClass* obj = Map.Layer[LAYER_GROUND][index];
@@ -2398,7 +2426,7 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
             /*
             **	All of the player's objects heal up.
             */
-            case HEAL_BASE:
+            case CRATE_HEAL_BASE:
                 new AnimClass(ANIM_CRATE_INVUN, Cell_Coord());
                 for (index = 0; index < Logic.Count(); index++) {
                     ObjectClass* obj = Logic[index];
@@ -2430,7 +2458,8 @@ bool CellClass::Goodie_Check(FootClass* object, bool check_steel)
  *=============================================================================================*/
 bool CellClass::Flag_Place(HousesType house)
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     if (!IsFlagged && Is_Generally_Clear()) {
         IsFlagged = true;
         Owner = house;
@@ -2457,7 +2486,8 @@ bool CellClass::Flag_Place(HousesType house)
  *=============================================================================================*/
 bool CellClass::Flag_Remove(void)
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     if (IsFlagged) {
         IsFlagged = false;
         Owner = HOUSE_NONE;
@@ -2520,7 +2550,8 @@ void CellClass::Flag_Destroy(void)
  *=============================================================================================*/
 void CellClass::Shimmer(void)
 {
-    Validate();
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     ObjectClass* object = Cell_Occupier();
 
     while (object) {
@@ -2557,8 +2588,149 @@ ObjectClass* CellClass::Cell_Occupier(void) const
     return (ptr);
 }
 
+#ifdef USE_RA_AI
+
 /*
-**  Additions to CellClass to track visibility per-player. ST - 3/5/2019 3:08PM
+** Addition from Red Alert for AI. ST - 7/24/2019 5:33PM
+*/
+/***********************************************************************************************
+ * CellClass::Is_Clear_To_Move -- Determines if the cell is generally clear for travel         *
+ *                                                                                             *
+ *    This routine is called when determining general passability for purposes of zone         *
+ *    calculation. Only blockages that cannot be circumvented are considered to make a cell    *
+ *    impassable. All other obstructions can either be destroyed or are temporary.             *
+ *                                                                                             *
+ * INPUT:   loco     -- The locomotion type to use when determining passablility.              *
+ *                                                                                             *
+ *          ignoreinfantry -- Should infantry in the cell be ignored for movement purposes?    *
+ *                                                                                             *
+ *          ignorevehicles -- If vehicles should be ignored, then this flag will be true.      *
+ *                                                                                             *
+ *          zone     -- If specified, the zone must match this value or else movement is       *
+ *                      presumed disallowed.                                                   *
+ *                                                                                             *
+ *          check    -- This specifies the zone type that this check applies to.               *
+ *                                                                                             *
+ * OUTPUT:  Is the cell generally passable to ground targeting?                                *
+ *                                                                                             *
+ * WARNINGS:   none                                                                            *
+ *                                                                                             *
+ * HISTORY:                                                                                    *
+ *   09/25/1995 JLB : Created.                                                                 *
+ *   06/25/1996 JLB : Uses tracked vehicles as a basis for zone check.                         *
+ *   10/05/1996 JLB : Allows checking for crushable blockages.                                 *
+ *=============================================================================================*/
+bool CellClass::Is_Clear_To_Move(bool ignoreinfantry, bool ignorevehicles) const
+{
+    // assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
+    /*
+    **	Flying objects always consider every cell passable since they can fly over everything.
+    */
+    // if (loco == SPEED_WINGED) {
+    //	return(true);
+    //}
+
+    /*
+    **	If a zone was specified, then see if the cell is in a legal
+    **	zone to allow movement.
+    */
+    // if (zone != -1) {
+    //	if (zone != Zones[check]) {
+    //		return(false);
+    //	}
+    //}
+
+    /*
+    **	Check the occupy bits for passable legality. If ignore infantry is true, then
+    **	don't consider infnatry.
+    */
+    int composite = Flag.Composite;
+    if (ignoreinfantry) {
+        composite &= 0xE0; // Drop the infantry occupation bits.
+    }
+    if (ignorevehicles) {
+        composite &= 0x5F; // Drop the vehicle/building bit.
+    }
+    if (composite != 0) {
+        return (false);
+    }
+
+    /*
+    **	Fetch the land type of the cell -- to be modified and used later.
+    */
+    // LandType land = Land_Type();
+
+    /*
+    **	Walls are always considered to block the terrain for general passability
+    **	purposes unless this is a wall crushing check or if the checking object
+    **	can destroy walls.
+    */
+    OverlayTypeClass const* overlay = NULL;
+    if (Overlay != OVERLAY_NONE) {
+        overlay = &OverlayTypeClass::As_Reference(Overlay);
+    }
+    if (overlay != NULL && overlay->IsWall) {
+        // if (check != MZONE_DESTROYER && (check != MZONE_CRUSHER || !overlay->IsCrushable)) {
+        return (false);
+        //}
+
+        /*
+        **	Crushing objects consider crushable walls as clear rather than the
+        **	typical LAND_WALL setting.
+        */
+        // land = LAND_CLEAR;
+    }
+
+    /*
+    **	See if the ground type is impassable to this locomotion type and if
+    **	so, return the error condition.
+    */
+    // if (::Ground[land].Cost[loco] == 0) {
+    //	return(false);
+    //}
+
+    /*
+    **	All checks passed, so this cell must be passable.
+    */
+    return (true);
+}
+
+/***********************************************************************************************
+ * CellClass::Is_Bridge_Here -- Checks to see if this is a bridge occupied cell.               *
+ *                                                                                             *
+ *    This routine will examine this cell and if there is a bridge here, it will return        *
+ *    true.                                                                                    *
+ *                                                                                             *
+ * INPUT:   none                                                                               *
+ *                                                                                             *
+ * OUTPUT:  bool; Is there a bridge located in this cell?                                      *
+ *                                                                                             *
+ * WARNINGS:   none                                                                            *
+ *                                                                                             *
+ * HISTORY:                                                                                    *
+ *   07/30/1996 JLB : Created.                                                                 *
+ *=============================================================================================*/
+bool CellClass::Is_Bridge_Here(void) const
+{
+    switch (TType) {
+    case TEMPLATE_BRIDGE1:
+    case TEMPLATE_BRIDGE1D:
+    case TEMPLATE_BRIDGE2:
+    case TEMPLATE_BRIDGE2D:
+    case TEMPLATE_BRIDGE3:
+    case TEMPLATE_BRIDGE3D:
+    case TEMPLATE_BRIDGE4:
+    case TEMPLATE_BRIDGE4D:
+        return (true);
+    }
+    return (false);
+}
+
+#endif // USE_RA_AI
+
+/*
+**  Additions to CellClass to track visibility per-player. ST - 8/2/2019 2:59PM
 **
 **
 **
@@ -2694,113 +2866,3 @@ void CellClass::Override_Land_Type(LandType type)
 {
     OverrideLand = type;
 }
-
-#ifdef USE_RA_AI
-
-/*
-** Addition from Red Alert for AI. ST - 7/24/2019 5:33PM
-*/
-/***********************************************************************************************
- * CellClass::Is_Clear_To_Move -- Determines if the cell is generally clear for travel         *
- *                                                                                             *
- *    This routine is called when determining general passability for purposes of zone         *
- *    calculation. Only blockages that cannot be circumvented are considered to make a cell    *
- *    impassable. All other obstructions can either be destroyed or are temporary.             *
- *                                                                                             *
- * INPUT:   loco     -- The locomotion type to use when determining passablility.              *
- *                                                                                             *
- *          ignoreinfantry -- Should infantry in the cell be ignored for movement purposes?    *
- *                                                                                             *
- *          ignorevehicles -- If vehicles should be ignored, then this flag will be true.      *
- *                                                                                             *
- *          zone     -- If specified, the zone must match this value or else movement is       *
- *                      presumed disallowed.                                                   *
- *                                                                                             *
- *          check    -- This specifies the zone type that this check applies to.               *
- *                                                                                             *
- * OUTPUT:  Is the cell generally passable to ground targeting?                                *
- *                                                                                             *
- * WARNINGS:   none                                                                            *
- *                                                                                             *
- * HISTORY:                                                                                    *
- *   09/25/1995 JLB : Created.                                                                 *
- *   06/25/1996 JLB : Uses tracked vehicles as a basis for zone check.                         *
- *   10/05/1996 JLB : Allows checking for crushable blockages.                                 *
- *=============================================================================================*/
-bool CellClass::Is_Clear_To_Move(bool ignoreinfantry, bool ignorevehicles) const
-{
-    // assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
-
-    /*
-    **	Flying objects always consider every cell passable since they can fly over everything.
-    */
-    // if (loco == SPEED_WINGED) {
-    //	return(true);
-    //}
-
-    /*
-    **	If a zone was specified, then see if the cell is in a legal
-    **	zone to allow movement.
-    */
-    // if (zone != -1) {
-    //	if (zone != Zones[check]) {
-    //		return(false);
-    //	}
-    //}
-
-    /*
-    **	Check the occupy bits for passable legality. If ignore infantry is true, then
-    **	don't consider infnatry.
-    */
-    int composite = Flag.Composite;
-    if (ignoreinfantry) {
-        composite &= 0xE0; // Drop the infantry occupation bits.
-    }
-    if (ignorevehicles) {
-        composite &= 0x5F; // Drop the vehicle/building bit.
-    }
-    if (composite != 0) {
-        return (false);
-    }
-
-    /*
-    **	Fetch the land type of the cell -- to be modified and used later.
-    */
-    // LandType land = Land_Type();
-
-    /*
-    **	Walls are always considered to block the terrain for general passability
-    **	purposes unless this is a wall crushing check or if the checking object
-    **	can destroy walls.
-    */
-    OverlayTypeClass const* overlay = NULL;
-    if (Overlay != OVERLAY_NONE) {
-        overlay = &OverlayTypeClass::As_Reference(Overlay);
-    }
-    if (overlay != NULL && overlay->IsWall) {
-        // if (check != MZONE_DESTROYER && (check != MZONE_CRUSHER || !overlay->IsCrushable)) {
-        return (false);
-        //}
-
-        /*
-        **	Crushing objects consider crushable walls as clear rather than the
-        **	typical LAND_WALL setting.
-        */
-        // land = LAND_CLEAR;
-    }
-
-    /*
-    **	See if the ground type is impassable to this locomotion type and if
-    **	so, return the error condition.
-    */
-    // if (::Ground[land].Cost[loco] == 0) {
-    //	return(false);
-    //}
-
-    /*
-    **	All checks passed, so this cell must be passable.
-    */
-    return (true);
-}
-
-#endif // USE_RA_AI

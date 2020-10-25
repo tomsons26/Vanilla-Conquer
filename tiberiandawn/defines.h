@@ -291,6 +291,31 @@ typedef enum ProdFailType : unsigned char
 } ProdFailType;
 
 /**********************************************************************
+**	These enumerate the various crate powerups that are available.
+*/
+typedef enum CrateType : unsigned char
+{
+    CRATE_MONEY,        // Cash award.
+    CRATE_UNIT,         // A free unit.
+    CRATE_NUKE,         // A nuclear device that explodes.
+    CRATE_ION,          // Calls forth an ion blast on discoverer.
+    CRATE_NUKE_MISSILE, // Gets a one time nuclear missile options.
+    CRATE_ION_BLAST,    // Gets a one time ion blast option.
+    CRATE_AIR_STRIKE,   // Gets a one time air strike option.
+    CRATE_HEAL_BASE,    // Heals the player's entire base.
+    CRATE_CLOAK,        // Units in region gain cloak ability.
+    CRATE_EXPLOSION,    // Conventional explosion.
+    CRATE_NAPALM,       // A napalm explosion.
+    CRATE_SQUAD,        // A mixed squad of friendly infantry appear.
+    CRATE_VISCEROID,    // A visceroid appears!
+    CRATE_DARKNESS,     // Shroud the entire map.
+    CRATE_REVEAL,       // Reveal the entire map.
+
+    CRATE_COUNT,
+    CRATE_FIRST = 0
+} CrateType;
+
+/**********************************************************************
 **	These are the special weapons that can be used in the game. The common thread
 **	with these weapons is that they are controlled through the sidebar
 **	mechanism.

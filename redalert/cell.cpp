@@ -212,6 +212,7 @@ TechnoClass* CellClass::Cell_Techno(int x, int y) const
         object = Cell_Occupier();
         while (object && object->IsActive) {
             if (object->Is_Techno()) {
+                // Coordinate relative to cell corner.
                 COORDINATE coord = Coord_Fraction(object->Center_Coord());
                 long dist = Distance(coord, click);
                 if (!close || dist < distance) {
@@ -457,8 +458,9 @@ bool CellClass::Is_Clear_To_Build(SpeedType loco) const
     /*
     **	During scenario initialization, passability is always guaranteed.
     */
-    if (ScenarioInit)
+    if (ScenarioInit) {
         return (true);
+    }
 
     /*
     **	If there is an object there, then don't allow building.
@@ -592,8 +594,9 @@ void CellClass::Occupy_Down(ObjectClass* object)
 
     ObjectClass* optr;
 
-    if (object == NULL)
+    if (object == NULL) {
         return;
+    }
 
     /*
     **	Always add buildings to the end of the occupation chain. This is necessary because
@@ -719,6 +722,12 @@ void CellClass::Occupy_Up(ObjectClass* object)
     case RTTI_AIRCRAFT:
     case RTTI_UNIT:
         Flag.Occupy.Vehicle = false;
+#ifdef NEVER
+        int x, y;
+        if (Map.Coord_To_Pixel(Cell_Coord(), x, y)) {
+            SeenBuff.Put_Pixel(x, y, BLUE);
+        }
+#endif
         break;
 
     case RTTI_TERRAIN:
@@ -755,8 +764,9 @@ void CellClass::Overlap_Down(ObjectClass* object)
 
     ObjectClass** ptr = 0;
 
-    if (!object)
+    if (!object) {
         return;
+    }
 
     int index;
     for (index = 0; index < ARRAY_SIZE(Overlapper); index++) {
@@ -1441,6 +1451,10 @@ void CellClass::Concrete_Calc(void)
     for (int i = 0; i < (sizeof(_even) / sizeof(_even[0])); i++) {
         CellClass& cellptr = Adjacent_Cell(*ptr++);
 
+        //		if ((cellptr->IsConcrete) ||
+        //					cellptr->Concrete == C_UPDOWN_RIGHT ||
+        //					cellptr->Concrete == C_UPDOWN_LEFT) {
+
         if (cellptr.Overlay == OVERLAY_CONCRETE) {
             index |= (1 << i);
         }
@@ -1618,6 +1632,8 @@ void CellClass::Concrete_Calc(void)
  *=============================================================================================*/
 void CellClass::Wall_Update(void)
 {
+    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     if (Overlay == OVERLAY_NONE) {
         return;
     }
@@ -1626,8 +1642,6 @@ void CellClass::Wall_Update(void)
     if (!wall.IsWall) {
         return;
     }
-
-    assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
 
     static FacingType _offsets[5] = {FACING_N, FACING_E, FACING_S, FACING_W, FACING_NONE};
 
@@ -2118,6 +2132,7 @@ void CellClass::Adjust_Threat(HousesType house, int threat_value)
 long CellClass::Tiberium_Adjust(bool pregame)
 {
     assert((unsigned)Cell_Number() <= MAP_CELL_TOTAL);
+
     if (Overlay != OVERLAY_NONE) {
         if (OverlayTypeClass::As_Reference(Overlay).Land == LAND_TIBERIUM) {
             static int _adj[9] = {0, 1, 3, 4, 6, 7, 8, 10, 11};
@@ -2162,6 +2177,7 @@ long CellClass::Tiberium_Adjust(bool pregame)
             for (FacingType face = FACING_FIRST; face < FACING_COUNT; face++) {
                 if ((unsigned)::Adjacent_Cell(Cell_Number(), face) >= MAP_CELL_TOTAL)
                     continue;
+
                 CellClass* adj = Adjacent_Cell(face);
 
                 if (adj && adj->Overlay != OVERLAY_NONE
@@ -2906,6 +2922,27 @@ void CellClass::Shimmer(void)
         object->Do_Shimmer();
         object = object->Next;
     }
+}
+
+/***********************************************************************************************
+ * CellClass::Cell_Occupier -- Fetches the occupier for the cell.                              *
+ *                                                                                             *
+ *    This routine returns with the first recorded occupier of this cell. A special validity   *
+ *    check is performed to ensure that there are no dead objects still marked on the          *
+ *    map.                                                                                     *
+ *                                                                                             *
+ * INPUT:   none                                                                               *
+ *                                                                                             *
+ * OUTPUT:  Returns with a pointer to the first occupier object.                               *
+ *                                                                                             *
+ * WARNINGS:   none                                                                            *
+ *                                                                                             *
+ * HISTORY:                                                                                    *
+ *   08/17/1995 JLB : Created.                                                                 *
+ *=============================================================================================*/
+ObjectClass* CellClass::Cell_Occupier(void) const
+{
+    return OccupierPtr;
 }
 
 /***********************************************************************************************

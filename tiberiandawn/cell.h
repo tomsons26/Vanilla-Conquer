@@ -139,16 +139,19 @@ public:
     **	These point to the object(s) that are located in this cell or overlap
     **	this cell.
     */
+private:
     ObjectClass* OccupierPtr;
+
+public:
     ObjectClass* Overlapper[3];
 
     /*
-    **	Per-player view of whether a cell is mapped. One bit for each house type. ST - 3/5/2019 3:00PM
+    **	Per-player view of whether a cell is mapped. One bit for each house type. ST - 8/2/2019 3:00PM
     */
     unsigned int IsMappedByPlayerMask;
 
     /*
-    **	Per-player view of whether a cell is visible. One bit for each house type. ST - 3/5/2019 3:00PM
+    **	Per-player view of whether a cell is visible. One bit for each house type. ST - 8/2/2019 3:00PM
     */
     unsigned int IsVisibleByPlayerMask;
 
@@ -178,55 +181,59 @@ public:
 
     //----------------------------------------------------------------
     CellClass(void);
-    ~CellClass(void){};
+    ~CellClass(void)
+    {
+        OccupierPtr = 0;
+    }
 
     int operator==(CellClass const& cell) const
     {
         return &cell == this;
-    };
+    }
 
     /*
     **	Query functions.
     */
-    ObjectClass* Cell_Occupier(void) const;
-    static int Spot_Index(COORDINATE coord);
-    bool Is_Spot_Free(int spot_index) const
-    {
-        return (!(Flag.Composite & (1 << spot_index)));
-    }
+    bool Is_Bridge_Here(void) const;
+    BuildingClass* Cell_Building(void) const;
+    CELL Cell_Number(void) const;
+    COORDINATE Cell_Coord(void) const;
     COORDINATE Closest_Free_Spot(COORDINATE coord, bool any = false) const;
     COORDINATE Free_Spot(void) const
     {
         return Closest_Free_Spot(Cell_Coord());
-    };
-    bool Is_Generally_Clear(bool ignore_cloaked = false) const;
-    TARGET As_Target(void) const
-    {
-        return ::As_Target(Cell_Number());
-    };
-    BuildingClass* Cell_Building(void) const;
-    CellClass const* Adjacent_Cell(FacingType face) const;
+    }
     CellClass* Adjacent_Cell(FacingType face)
     {
         return (CellClass*)((*((CellClass const*)this)).Adjacent_Cell(face));
-    };
-    COORDINATE Cell_Coord(void) const;
-    int Cell_Color(bool override = false) const;
-    CELL Cell_Number(void) const;
+    }
+    CellClass const* Adjacent_Cell(FacingType face) const;
+    InfantryClass* Cell_Infantry(void) const;
     LandType Land_Type(void) const
     {
         return ((OverrideLand != LAND_COUNT) ? OverrideLand : Land);
-    };
+    }
     ObjectClass* Cell_Find_Object(RTTIType rtti) const;
     ObjectClass* Cell_Object(int x = 0, int y = 0) const;
+    ObjectClass* Cell_Occupier(void) const;
+    ObjectClass* Fetch_Occupier(void) const;
+    TARGET As_Target(void) const
+    {
+        return ::As_Target(Cell_Number());
+    }
     TechnoClass* Cell_Techno(int x = 0, int y = 0) const;
     TerrainClass* Cell_Terrain(void) const;
     UnitClass* Cell_Unit(void) const;
-    InfantryClass* Cell_Infantry(void) const;
     TriggerClass* Get_Trigger(void) const;
+    bool Is_Generally_Clear(bool ignore_cloaked = false) const;
+    bool Is_Spot_Free(int spot_index) const
+    {
+        return (!(Flag.Composite & (1 << spot_index)));
+    }
+    int Cell_Color(bool override = false) const;
     int Clear_Icon(void) const;
     bool Goodie_Check(FootClass* object, bool check_steel = false);
-    ObjectClass* Fetch_Occupier(void) const;
+    static int Spot_Index(COORDINATE coord);
     bool Get_Template_Info(char* template_name, int& icon, void*& image_data);
 
     /*
@@ -273,12 +280,10 @@ public:
     int operator!=(CellClass const&) const
     {
         return 0;
-    };
-
-    int Validate(void) const;
+    }
 
     /*
-    **	Additional per-player functionality is needed for multiplayer. ST - 3/5/2019 3:03PM
+    **	Additional per-player functionality is needed for multiplayer. ST - 8/2/2019 3:01PM
     */
     void Set_Mapped(HousesType house, bool set = true);
     void Set_Mapped(HouseClass* player, bool set = true);

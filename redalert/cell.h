@@ -260,10 +260,7 @@ public:
     }
     ObjectClass* Cell_Find_Object(RTTIType rtti) const;
     ObjectClass* Cell_Object(int x = 0, int y = 0) const;
-    ObjectClass* Cell_Occupier(void) const
-    {
-        return (OccupierPtr);
-    }
+    ObjectClass* Cell_Occupier(void) const;
     ObjectClass* Fetch_Occupier(void) const;
     TARGET As_Target(void) const
     {

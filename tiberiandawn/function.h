@@ -840,6 +840,14 @@ inline COORDINATE XYPixel_Coord(int x, int y)
     return ((COORDINATE)MAKE_LONG((int)(((long)y * (long)ICON_LEPTON_H) / (long)ICON_PIXEL_H) /*+LEPTON_OFFSET_Y*/,
                                   (int)(((long)x * (long)ICON_LEPTON_W) / (long)ICON_PIXEL_W) /*+LEPTON_OFFSET_X*/));
 }
+inline COORDINATE Coord_Fraction(COORDINATE coord)
+{
+    return coord & 0x00FF00FFL;
+}
+inline COORDINATE Coord_Whole(COORDINATE coord)
+{
+    return coord & 0xFF00FF00L;
+}
 // inline int Facing_To_16(int facing) {return Facing16[facing];}
 inline int Facing_To_32(DirType facing)
 {
