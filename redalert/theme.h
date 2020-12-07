@@ -35,28 +35,35 @@
 #ifndef THEME_H
 #define THEME_H
 
+
+
 class ThemeClass
 {
 private:
-    static char const* Theme_File_Name(ThemeType theme);
+    char const* Theme_File_Name(ThemeType theme);
+
+    typedef struct ThemeControl
+    {
+        ThemeControl();
+        ~ThemeControl()
+        {
+        }
+        bool Fill_In(CCINIClass& ini);
+
+        char Name[256];    // Filename of score.
+        char Fullname[64]; // Full score name.
+        int Scenario;      // Scenario when it first becomes available.
+        int Duration;      // Duration of theme in seconds.
+        bool Normal;       // Allowed in normal game play?
+        bool Repeat;       // Always repeat this score?
+        bool Available;    // Is the score available?
+        int Owner;         // What houses are allowed to play this theme (bit field)?
+    } ThemeControl;
 
     int Current;       // Handle to current score.
     ThemeType Score;   // Score number currently being played.
     ThemeType Pending; // Score to play next.
-
-    typedef struct
-    {
-        char const* Name; // Filename of score.
-        int Fullname;     // Text number for full score name.
-        int Scenario;     // Scenario when it first becomes available.
-        int Duration;     // Duration of theme in seconds.
-        bool Normal;      // Allowed in normal game play?
-        bool Repeat;      // Always repeat this score?
-        bool Available;   // Is the score available?
-        int Owner;        // What houses are allowed to play this theme (bit field)?
-    } ThemeControl;
-
-    static ThemeControl _themes[THEME_COUNT];
+    DynamicVectorClass<ThemeControl*> Themes;
 
     enum
     {
@@ -75,7 +82,7 @@ public:
     bool Is_Allowed(ThemeType index) const;
     bool Is_Regular(ThemeType theme) const
     {
-        return (theme != THEME_NONE && _themes[theme].Normal);
+        return (theme != THEME_NONE && Themes[theme]->Normal);
     }
     char const* Base_Name(ThemeType index) const;
     char const* Full_Name(ThemeType index) const;
@@ -86,7 +93,7 @@ public:
     int Play_Song(ThemeType index);
     int Still_Playing(void) const;
     int Track_Length(ThemeType index) const;
-    static void Scan(void);
+    void Scan(void);
     void AI(void);
     void Fade_Out(void)
     {
@@ -94,8 +101,12 @@ public:
     }
     void Queue_Song(ThemeType index);
     void Set_Theme_Data(ThemeType theme, int scenario, int owners);
+    int Process(CCINIClass& ini);
+    void Clear();
     void Stop(void);
     void Suspend(void);
+
+    static void Add_Old_Theme_Data();
 };
 
 #endif

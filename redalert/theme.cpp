@@ -50,10 +50,22 @@
 #include "function.h"
 #include "theme.h"
 
+    typedef struct
+    {
+        char const* Name; // Filename of score.
+        int Fullname;     // Text number for full score name.
+        int Scenario;     // Scenario when it first becomes available.
+        int Duration;     // Duration of theme in seconds.
+        bool Normal;      // Allowed in normal game play?
+        bool Repeat;      // Always repeat this score?
+        bool Available;   // Is the score available?
+        int Owner;        // What houses are allowed to play this theme (bit field)?
+    } OldThemeControl;
+
 /*
 **	These are the actual filename list for the theme sample files.
 */
-ThemeClass::ThemeControl ThemeClass::_themes[THEME_COUNT] = {
+OldThemeControl _themes[THEME_COUNT] = {
     {"BIGF226M", TXT_THEME_BIGF, 0, 307, true, false, true, HOUSEF_ALLIES},
     {"CRUS226M", TXT_THEME_CRUS, 0, 222, true, false, true, HOUSEF_SOVIET},
     {"FAC1226M", TXT_THEME_FAC1, 0, 271, true, false, true, HOUSEF_ALLIES},
@@ -97,6 +109,59 @@ ThemeClass::ThemeControl ThemeClass::_themes[THEME_COUNT] = {
     {"WASTELND", TXT_THEME_WASTELND, 0, 242, true, false, true, HOUSEF_SOVIET | HOUSEF_SPAIN},
 #endif
 };
+// Fallback
+void ThemeClass::Add_Old_Theme_Data()
+{
+	for (int i = 0; i < THEME_COUNT; ++i) {
+        ThemeClass::ThemeControl* ctrl = new ThemeClass::ThemeControl;
+
+
+    	int id = 0;
+    	strcpy(ctrl->Name, _themes[i].Name);
+    	strcpy(ctrl->Fullname, Text_String(_themes[i].Fullname));
+    	ctrl->Duration = _themes[i].Duration;
+    	ctrl->Normal = _themes[i].Normal;
+    	ctrl->Repeat = _themes[i].Repeat;
+    	ctrl->Available = _themes[i].Available;
+    	ctrl->Owner = _themes[i].Owner;
+		
+		Theme.Themes.Add(ctrl);
+	}
+}
+
+
+ThemeClass::ThemeControl::ThemeControl()
+    : Name()
+    , Fullname()
+    , Scenario(0)
+    , Duration(0)
+    , Normal(true)
+    , Repeat(false)
+    , Available(false)
+    , Owner(0)
+{
+    Name[0] = '\0';
+    Fullname[0] = '\0';
+}
+
+bool ThemeClass::ThemeControl::Fill_In(CCINIClass& ini)
+{
+    if (!ini.Section_Present(Name)) {
+        return false;
+    }
+    //ini.Get_String(Name, "Name", Fullname, Fullname, sizeof(Fullname));
+
+    //TODO temp, should read name from ini but we need to fix names
+    int id = 0;
+    id = ini.Get_Int(Name, "Name", id);
+    strcpy(Fullname, Text_String(id));
+    Scenario = ini.Get_Int(Name, "Scenario", Scenario);
+    Duration = ini.Get_Int(Name, "Length", Duration); // maybe TODO, TS read this as a float with Min.Sec format
+    Normal = ini.Get_Bool(Name, "Normal", Normal);
+    Repeat = ini.Get_Bool(Name, "Repeat", Repeat);
+    Owner = ini.Get_Owners(Name, "Side", Owner);
+    return true;
+}
 
 /***********************************************************************************************
  * ThemeClass::Base_Name -- Fetches the base filename for the theme specified.                 *
@@ -116,8 +181,8 @@ ThemeClass::ThemeControl ThemeClass::_themes[THEME_COUNT] = {
  *=============================================================================================*/
 char const* ThemeClass::Base_Name(ThemeType theme) const
 {
-    if (theme != THEME_NONE) {
-        return (_themes[theme].Name);
+    if (theme != THEME_NONE && theme < Themes.Count()) {
+        return (Themes[theme]->Name);
     }
     return ("No theme");
 }
@@ -161,8 +226,8 @@ ThemeClass::ThemeClass(void)
  *=============================================================================================*/
 char const* ThemeClass::Full_Name(ThemeType theme) const
 {
-    if (theme >= THEME_FIRST && theme < THEME_COUNT) {
-        return (Text_String(_themes[theme].Fullname));
+    if (theme >= THEME_FIRST && theme < Themes.Count()) {
+        return Themes[theme]->Fullname;
     }
     return (NULL);
 }
@@ -186,7 +251,8 @@ char const* ThemeClass::Full_Name(ThemeType theme) const
 void ThemeClass::AI(void)
 {
     if (SampleType && !Debug_Quiet) {
-        if (ScoresPresent && Options.ScoreVolume != 0 && !Still_Playing() && Pending != THEME_NONE) {
+        if (ScoresPresent && Options.ScoreVolume != 0 && !Still_Playing() && Pending != THEME_NONE
+            && Pending != THEME_QUIET) {
 
             /*
             **	If the pending song needs to be picked, then pick it now.
@@ -226,7 +292,7 @@ void ThemeClass::AI(void)
 ThemeType ThemeClass::Next_Song(ThemeType theme) const
 {
     if (theme == THEME_NONE || theme == THEME_PICK_ANOTHER
-        || (theme != THEME_QUIET && !_themes[theme].Repeat && !Options.IsScoreRepeat)) {
+        || (theme != THEME_QUIET && !Themes[theme]->Repeat && !Options.IsScoreRepeat)) {
         if (Options.IsScoreShuffle) {
 
             /*
@@ -235,7 +301,7 @@ ThemeType ThemeClass::Next_Song(ThemeType theme) const
             */
             ThemeType newtheme;
             do {
-                newtheme = Sim_Random_Pick(THEME_FIRST, THEME_LAST);
+                newtheme = Sim_Random_Pick(THEME_FIRST, (ThemeType)(Themes.Count() - 1));
             } while (newtheme == theme || !Is_Allowed(newtheme));
             theme = newtheme;
 
@@ -246,7 +312,7 @@ ThemeType ThemeClass::Next_Song(ThemeType theme) const
             */
             do {
                 theme++;
-                if (theme > THEME_LAST) {
+                if (theme > Themes.Count()) {
                     theme = THEME_FIRST;
                 }
             } while (!Is_Allowed(theme));
@@ -356,8 +422,8 @@ char const* ThemeClass::Theme_File_Name(ThemeType theme)
 {
     static char name[_MAX_FNAME + _MAX_EXT];
 
-    if (theme >= THEME_FIRST && theme < THEME_COUNT) {
-        _makepath(name, NULL, NULL, _themes[theme].Name, ".AUD");
+    if ((unsigned)theme < (unsigned)Themes.Count()) {
+        snprintf(name, sizeof(name), "%s.AUD", Themes[theme]->Name);
         return ((char const*)(&name[0]));
     }
 
@@ -382,8 +448,8 @@ char const* ThemeClass::Theme_File_Name(ThemeType theme)
  *=============================================================================================*/
 int ThemeClass::Track_Length(ThemeType theme) const
 {
-    if ((unsigned)theme < THEME_COUNT) {
-        return (_themes[theme].Duration);
+    if ((unsigned)theme < Themes.Count()) {
+        return Themes[theme]->Duration;
     }
     return (0);
 }
@@ -464,19 +530,19 @@ int ThemeClass::Still_Playing(void) const
  *=============================================================================================*/
 bool ThemeClass::Is_Allowed(ThemeType index) const
 {
-    if ((unsigned)index >= THEME_COUNT)
+    if ((unsigned)index >= Themes.Count())
         return (true);
 
     /*
     **	If the theme is not present, then it certainly isn't allowed.
     */
-    if (!_themes[index].Available)
+    if (!Themes[index]->Available)
         return (false);
 
     /*
     **	Only normal themes (playable during battle) are considered allowed.
     */
-    if (!_themes[index].Normal)
+    if (!Themes[index]->Normal)
         return (false);
 
     /*
@@ -484,14 +550,14 @@ bool ThemeClass::Is_Allowed(ThemeType index) const
     **	it. If the player's house hasn't yet been determined, then presume this test
     **	passes.
     */
-    if (PlayerPtr != NULL && ((1 << PlayerPtr->ActLike) & _themes[index].Owner) == 0)
+    if (PlayerPtr != NULL && ((1 << PlayerPtr->ActLike) & Themes[index]->Owner) == 0)
         return (false);
 
     /*
     **	If the scenario doesn't allow this theme yet, then return the failure flag. The
     **	scenario check only makes sense for solo play.
     */
-    if (Session.Type == GAME_NORMAL && Scen.Scenario < _themes[index].Scenario)
+    if (Session.Type == GAME_NORMAL && Scen.Scenario < Themes[index]->Scenario)
         return (false);
 
     /*
@@ -526,8 +592,8 @@ ThemeType ThemeClass::From_Name(char const* name) const
         **	First search for an exact name match with the filename
         **	of the theme. This is guaranteed to be unique.
         */
-        for (ThemeType theme = THEME_FIRST; theme < THEME_COUNT; theme++) {
-            if (stricmp(_themes[theme].Name, name) == 0) {
+        for (ThemeType theme = THEME_FIRST; theme < Themes.Count(); theme++) {
+            if (stricmp(Themes[theme]->Name, name) == 0) {
                 return (theme);
             }
         }
@@ -537,8 +603,8 @@ ThemeType ThemeClass::From_Name(char const* name) const
         **	a substring within the full name of the score. This might
         **	yield a match, but is not guaranteed to be unique.
         */
-        for (ThemeType theme = THEME_FIRST; theme < THEME_COUNT; theme++) {
-            if (strstr(Text_String(_themes[theme].Fullname), name) != NULL) {
+        for (ThemeType theme = THEME_FIRST; theme < Themes.Count(); theme++) {
+            if (strstr(Themes[theme]->Fullname, name) != NULL) {
                 return (theme);
             }
         }
@@ -566,8 +632,8 @@ ThemeType ThemeClass::From_Name(char const* name) const
  *=============================================================================================*/
 void ThemeClass::Scan(void)
 {
-    for (ThemeType theme = THEME_FIRST; theme < THEME_COUNT; theme++) {
-        _themes[theme].Available = CCFileClass(Theme_File_Name(theme)).Is_Available();
+    for (ThemeType theme = THEME_FIRST; theme < Themes.Count(); theme++) {
+        Themes[theme]->Available = CCFileClass(Theme_File_Name(theme)).Is_Available();
     }
 }
 
@@ -594,8 +660,37 @@ void ThemeClass::Scan(void)
 void ThemeClass::Set_Theme_Data(ThemeType theme, int scenario, int owners)
 {
     if (theme != THEME_NONE) {
-        _themes[theme].Normal = true;
-        _themes[theme].Scenario = scenario;
-        _themes[theme].Owner = owners;
+        Themes[theme]->Normal = true;
+        Themes[theme]->Scenario = scenario;
+        Themes[theme]->Owner = owners;
     }
+}
+
+int ThemeClass::Process(CCINIClass &ini)
+{
+    char buffer[32];
+    int count = ini.Entry_Count("Themes");
+
+    for (int i = 0; i < count; ++i) {
+        const char* entry = ini.Get_Entry("Themes", i);
+        if (ini.Get_String("Themes", entry, "", buffer, sizeof(buffer)) > 0) {
+
+            ThemeControl* ctrl = nullptr;
+            ThemeType theme = From_Name(buffer);
+            if (theme == THEME_NONE) {
+                ctrl = new ThemeControl;
+                strcpy(ctrl->Name, buffer);
+                Themes.Add(ctrl);
+            } else {
+                ctrl = Themes[theme];
+            }
+            ctrl->Fill_In(ini);
+        }
+    }
+    return count;
+}
+
+void ThemeClass::Clear()
+{
+    Themes.Delete_All();
 }

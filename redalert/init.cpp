@@ -303,6 +303,28 @@ bool Init_Game(int, char*[])
     }
 #endif
 
+
+    CCFileClass theme("THEME.INI");
+    if (!theme.Is_Available()) {
+        WWDebugString("Failed to find THEME.INI!");
+        Theme.Clear();
+        Theme.Add_Old_Theme_Data();
+        Theme.Scan();
+    } else {
+        CCINIClass theme_ini;
+        if (!theme_ini.Load(theme, false)) {
+            WWDebugString("Failed to load THEME.INI!");
+            Theme.Clear();
+            Theme.Add_Old_Theme_Data();
+            Theme.Scan();
+            //return -1;
+        } else {
+            Theme.Clear();
+            Theme.Process(theme_ini);
+            Theme.Scan();
+        }
+    }
+
     Session.MaxPlayers = Rule.MaxPlayers;
 
     /*
@@ -2563,7 +2585,7 @@ static void Init_Secondary_Mixfiles(void)
     */
     ScoresPresent = true;
     ScoreMix = new MFCD("SCORES.MIX", &FastKey);
-    ThemeClass::Scan();
+    Theme.Scan();
 
     /*
     **	These are sound card specific, but the install program would have

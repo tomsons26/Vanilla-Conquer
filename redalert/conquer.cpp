@@ -4321,7 +4321,7 @@ bool Force_CD_Available(int cd_desired) //	ajw
         assert(MoviesMix != NULL);
         GeneralMix = new MFCD("GENERAL.MIX", &FastKey);
         ScoreMix = new MFCD("SCORES.MIX", &FastKey);
-        ThemeClass::Scan();
+        Theme.Scan();
     }
 
     return (true);
